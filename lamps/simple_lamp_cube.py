@@ -1,6 +1,7 @@
 import bpy
 import bmesh
 import os
+import math
 
 # Set up the scene for mm
 bpy.context.scene.unit_settings.system = 'METRIC'
@@ -11,8 +12,8 @@ bpy.context.scene.unit_settings.length_unit = 'MILLIMETERS'
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete()
 
-# Create an open-bottomed cube using BMesh
-def create_open_bottom_cube(size=200, location=(0, 0, 0)):
+# Create an open-bottomed cube using BMesh with vertical lines
+def create_open_bottom_cube_with_lines(size=200, location=(0, 0, 0), num_lines=8, line_depth=5):
     # Create a new mesh and bmesh
     mesh = bpy.data.meshes.new("OpenBottomCube_Mesh")
     bm = bmesh.new()
@@ -20,29 +21,162 @@ def create_open_bottom_cube(size=200, location=(0, 0, 0)):
     # Half of the size for vertex coordinates
     half_size = size / 2
     
-    # Create vertices (8 corners of a cube)
-    v1 = bm.verts.new((-half_size, -half_size, -half_size))  # Bottom front left
-    v2 = bm.verts.new((half_size, -half_size, -half_size))   # Bottom front right
-    v3 = bm.verts.new((half_size, half_size, -half_size))    # Bottom back right
-    v4 = bm.verts.new((-half_size, half_size, -half_size))   # Bottom back left
-    v5 = bm.verts.new((-half_size, -half_size, half_size))   # Top front left
-    v6 = bm.verts.new((half_size, -half_size, half_size))    # Top front right
-    v7 = bm.verts.new((half_size, half_size, half_size))     # Top back right
-    v8 = bm.verts.new((-half_size, half_size, half_size))    # Top back left
+    # Create the base vertices (8 corners of a cube)
+    corners = [
+        bm.verts.new((-half_size, -half_size, -half_size)),  # 0 Bottom front left
+        bm.verts.new((half_size, -half_size, -half_size)),   # 1 Bottom front right
+        bm.verts.new((half_size, half_size, -half_size)),    # 2 Bottom back right
+        bm.verts.new((-half_size, half_size, -half_size)),   # 3 Bottom back left
+        bm.verts.new((-half_size, -half_size, half_size)),   # 4 Top front left
+        bm.verts.new((half_size, -half_size, half_size)),    # 5 Top front right
+        bm.verts.new((half_size, half_size, half_size)),     # 6 Top back right
+        bm.verts.new((-half_size, half_size, half_size)),    # 7 Top back left
+    ]
     
-    # Create the 5 faces (excluding the bottom)
-    # Top face
-    bm.faces.new([v5, v6, v7, v8])
-    # Front face
-    bm.faces.new([v1, v2, v6, v5])
-    # Right face
-    bm.faces.new([v2, v3, v7, v6])
-    # Back face
-    bm.faces.new([v3, v4, v8, v7])
-    # Left face
-    bm.faces.new([v4, v1, v5, v8])
+    # Create the top face (kept clean, no vertical lines)
+    bm.faces.new([corners[4], corners[5], corners[6], corners[7]])
     
-    # Note: We're intentionally NOT creating the bottom face
+    # Create arrays to store all vertices for the sides
+    # We'll use these to create faces with vertical lines
+    front_verts_bottom = [corners[0]]
+    front_verts_top = [corners[4]]
+    right_verts_bottom = [corners[1]]
+    right_verts_top = [corners[5]]
+    back_verts_bottom = [corners[2]]
+    back_verts_top = [corners[6]]
+    left_verts_bottom = [corners[3]]
+    left_verts_top = [corners[7]]
+    
+    # Calculate spacing between lines
+    spacing = size / num_lines
+    
+    # Create vertices for the vertical lines on each face
+    for i in range(1, num_lines):
+        # Parameter 't' goes from 0 to 1 across each side
+        t = i / num_lines
+        
+        # Front face vertices
+        x_front = -half_size + (size * t)
+        # Bottom edge
+        front_verts_bottom.append(bm.verts.new((x_front, -half_size, -half_size)))
+        # Top edge
+        front_verts_top.append(bm.verts.new((x_front, -half_size, half_size)))
+        
+        # Right face vertices
+        y_right = -half_size + (size * t)
+        # Bottom edge
+        right_verts_bottom.append(bm.verts.new((half_size, y_right, -half_size)))
+        # Top edge
+        right_verts_top.append(bm.verts.new((half_size, y_right, half_size)))
+        
+        # Back face vertices
+        x_back = half_size - (size * t)
+        # Bottom edge
+        back_verts_bottom.append(bm.verts.new((x_back, half_size, -half_size)))
+        # Top edge
+        back_verts_top.append(bm.verts.new((x_back, half_size, half_size)))
+        
+        # Left face vertices
+        y_left = half_size - (size * t)
+        # Bottom edge
+        left_verts_bottom.append(bm.verts.new((-half_size, y_left, -half_size)))
+        # Top edge
+        left_verts_top.append(bm.verts.new((-half_size, y_left, half_size)))
+        
+        # Add the vertical line indentations by creating vertices pushed inward
+        # Only do this if line_depth > 0
+        if line_depth > 0:
+            # Front face line
+            front_line_bottom = bm.verts.new((x_front, -half_size + line_depth, -half_size))
+            front_line_top = bm.verts.new((x_front, -half_size + line_depth, half_size))
+            
+            # Create faces on either side of the line
+            # Left side of the line
+            if i > 1:
+                bm.faces.new([front_verts_bottom[i-1], front_verts_top[i-1], 
+                              front_line_top, front_line_bottom])
+            
+            # Right side of the line
+            if i < num_lines - 1:
+                bm.faces.new([front_line_bottom, front_line_top, 
+                              front_verts_top[i], front_verts_bottom[i]])
+            
+            # Right face line
+            right_line_bottom = bm.verts.new((half_size - line_depth, y_right, -half_size))
+            right_line_top = bm.verts.new((half_size - line_depth, y_right, half_size))
+            
+            # Create faces on either side of the line
+            # Left side of the line
+            if i > 1:
+                bm.faces.new([right_verts_bottom[i-1], right_verts_top[i-1], 
+                              right_line_top, right_line_bottom])
+            
+            # Right side of the line
+            if i < num_lines - 1:
+                bm.faces.new([right_line_bottom, right_line_top, 
+                              right_verts_top[i], right_verts_bottom[i]])
+            
+            # Back face line
+            back_line_bottom = bm.verts.new((x_back, half_size - line_depth, -half_size))
+            back_line_top = bm.verts.new((x_back, half_size - line_depth, half_size))
+            
+            # Create faces on either side of the line
+            # Left side of the line
+            if i > 1:
+                bm.faces.new([back_verts_bottom[i-1], back_verts_top[i-1], 
+                              back_line_top, back_line_bottom])
+            
+            # Right side of the line
+            if i < num_lines - 1:
+                bm.faces.new([back_line_bottom, back_line_top, 
+                              back_verts_top[i], back_verts_bottom[i]])
+            
+            # Left face line
+            left_line_bottom = bm.verts.new((-half_size + line_depth, y_left, -half_size))
+            left_line_top = bm.verts.new((-half_size + line_depth, y_left, half_size))
+            
+            # Create faces on either side of the line
+            # Left side of the line
+            if i > 1:
+                bm.faces.new([left_verts_bottom[i-1], left_verts_top[i-1], 
+                              left_line_top, left_line_bottom])
+            
+            # Right side of the line
+            if i < num_lines - 1:
+                bm.faces.new([left_line_bottom, left_line_top, 
+                              left_verts_top[i], left_verts_bottom[i]])
+    
+    # Add the last vertices for each side
+    front_verts_bottom.append(corners[1])
+    front_verts_top.append(corners[5])
+    right_verts_bottom.append(corners[2])
+    right_verts_top.append(corners[6])
+    back_verts_bottom.append(corners[3])
+    back_verts_top.append(corners[7])
+    left_verts_bottom.append(corners[0])
+    left_verts_top.append(corners[4])
+    
+    # Create the side faces between the vertical lines
+    for i in range(num_lines):
+        # Front face strip
+        if i == 0 or i == num_lines - 1 or line_depth == 0:
+            bm.faces.new([front_verts_bottom[i], front_verts_top[i], 
+                          front_verts_top[i+1], front_verts_bottom[i+1]])
+        
+        # Right face strip
+        if i == 0 or i == num_lines - 1 or line_depth == 0:
+            bm.faces.new([right_verts_bottom[i], right_verts_top[i], 
+                          right_verts_top[i+1], right_verts_bottom[i+1]])
+        
+        # Back face strip
+        if i == 0 or i == num_lines - 1 or line_depth == 0:
+            bm.faces.new([back_verts_bottom[i], back_verts_top[i], 
+                          back_verts_top[i+1], back_verts_bottom[i+1]])
+        
+        # Left face strip
+        if i == 0 or i == num_lines - 1 or line_depth == 0:
+            bm.faces.new([left_verts_bottom[i], left_verts_top[i], 
+                          left_verts_top[i+1], left_verts_bottom[i+1]])
     
     # Write the bmesh to the mesh
     bm.to_mesh(mesh)
@@ -63,8 +197,13 @@ def create_open_bottom_cube(size=200, location=(0, 0, 0)):
     
     return obj
 
-# Create the open-bottomed cube
-lamp_shade = create_open_bottom_cube(size=200, location=(0, 0, 0))
+# Create the open-bottomed cube with vertical lines
+lamp_shade = create_open_bottom_cube_with_lines(
+    size=200, 
+    location=(0, 0, 0), 
+    num_lines=12,  # Number of divisions (including corners)
+    line_depth=3   # Depth of the vertical lines in mm
+)
 
 # Add a material
 material = bpy.data.materials.new(name="LampShade_Material")
