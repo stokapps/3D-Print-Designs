@@ -90,6 +90,15 @@ if transmission_input:
 else:
     print("Warning: Could not find transparency/transmission input in Principled BSDF shader")
 
+# Add bevel modifier for rounded edges
+bpy.ops.object.modifier_add(type='BEVEL')
+bevel_modifier = lamp_shade.modifiers["Bevel"]
+bevel_modifier.width = 30.0  # 30mm large bevel
+bevel_modifier.segments = 10  # More segments for smoother bevel
+bevel_modifier.limit_method = 'ANGLE'  # Only bevel edges at certain angles
+bevel_modifier.angle_limit = 0.785398  # 45 degrees in radians
+bevel_modifier.profile = 0.5  # Rounded profile (0.5 is a semicircle)
+
 # Add solidify modifier for thickness
 bpy.ops.object.modifier_add(type='SOLIDIFY')
 solidify_modifier = lamp_shade.modifiers["Solidify"]
@@ -122,14 +131,16 @@ def export_to_stl(obj, filepath):
     
     print(f"Model exported to: {filepath}")
 
-# Export path (in the same directory as the script)
-script_dir = os.path.dirname(bpy.data.filepath) or os.path.expanduser("~/Documents/StokApps/3d-designs/lamps")
-export_filepath = os.path.join(script_dir, "lamp_shade.stl")
+# Use explicit path to the STLs directory
+export_filepath = "/Users/stoklosa/Documents/StokApps/3D-print-designs/lamps/STLs/lamp_shade.stl"
 
-# Apply the solidify modifier before export to ensure proper thickness in the STL
+# Apply the modifiers before export to ensure proper geometry in the STL
+# Apply bevel first, then solidify
+bpy.ops.object.modifier_apply(modifier=bevel_modifier.name)
 bpy.ops.object.modifier_apply(modifier=solidify_modifier.name)
 
 # Export the model
 export_to_stl(lamp_shade, export_filepath)
 
-print("Open-bottomed lamp shade created in millimeters and exported to STL!")
+print("Open-bottomed lamp shade with rounded bevels created in millimeters and exported to STL!")
+print(f"Exported to: {export_filepath}")
