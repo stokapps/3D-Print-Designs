@@ -1,5 +1,4 @@
 import bpy
-import bmesh
 import os
 import math
 
@@ -12,102 +11,103 @@ bpy.context.scene.unit_settings.length_unit = 'MILLIMETERS'
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete()
 
-# Create a rectangular lamp shade with an open bottom
-def create_rectangular_lamp_shade(width=100, depth=100, height=180, thickness=1, location=(0, 0, 0)):
-    # Create a simple cube
-    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, height/2))
-    cube = bpy.context.active_object
-    
-    # Scale the cube to the desired dimensions
-    cube.scale = (width, depth, height)
-    bpy.ops.object.transform_apply(scale=True)
-    
-    # Enter edit mode
-    bpy.ops.object.mode_set(mode='EDIT')
-    
-    # Select only the bottom face
-    bpy.ops.mesh.select_all(action='DESELECT')
-    bpy.ops.mesh.select_mode(type='FACE')
-    
-    bm = bmesh.from_edit_mesh(cube.data)
-    for face in bm.faces:
-        face_center = face.calc_center_median()
-        if abs(face_center.z - 0) < 0.001:  # Bottom face has z close to 0
-            face.select = True
-    
-    bmesh.update_edit_mesh(cube.data)
-    
-    # Delete the selected face to create the opening
-    bpy.ops.mesh.delete(type='FACE')
-    
-    # Return to object mode
-    bpy.ops.object.mode_set(mode='OBJECT')
-    
-    # Add solidify modifier to give it thickness
-    solidify_mod = cube.modifiers.new(name="Solidify", type='SOLIDIFY')
-    solidify_mod.thickness = thickness
-    solidify_mod.offset = 0.0  # Center the thickness
-    
-    # Add bevel modifier for rounded edges
-    bevel_mod = cube.modifiers.new(name="Bevel", type='BEVEL')
-    bevel_mod.width = 5.0  # 5mm bevel
-    bevel_mod.segments = 8  # Segments for smooth bevel
-    bevel_mod.limit_method = 'ANGLE'
-    bevel_mod.angle_limit = 0.785398  # 45 degrees in radians
-    
-    # Apply both modifiers
-    bpy.ops.object.modifier_apply(modifier=solidify_mod.name)
-    bpy.ops.object.modifier_apply(modifier=bevel_mod.name)
-    
-    # Final cleanup
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.remove_doubles(threshold=0.01)  # Merge vertices that are very close
-    bpy.ops.mesh.normals_make_consistent(inside=False)  # Correct normals
-    bpy.ops.object.mode_set(mode='OBJECT')
-    
-    # Rename the object
-    cube.name = "RectangularLampShade"
-    return cube
+# Create a super simple rectangular lamp shade
+bpy.ops.mesh.primitive_cube_add(size=1)
+cube = bpy.context.active_object
 
-# Create the rectangular lamp shade
-lamp_shade = create_rectangular_lamp_shade(
-    width=100,      # Width of 100mm as specified
-    depth=100,      # Depth of 100mm for a square base
-    height=180,     # Height of 180mm as specified
-    thickness=1,    # 1mm wall thickness as requested
-    location=(0, 0, 0)
-)
+# Scale to our dimensions (100x100x180mm)
+cube.scale = (50, 50, 90)
+bpy.ops.object.transform_apply(scale=True)
 
-# Export the lamp shade to STL
-export_filepath = "/Users/stoklosa/Documents/StokApps/3D-print-designs/lamps/STLs/rectangular_lamp_shade.stl"
+# Position it so the bottom is at z=0
+cube.location = (0, 0, 90)
+bpy.ops.object.transform_apply(location=True)
 
-# Export function
-def export_to_stl(obj, filepath):
-    # Deselect all objects
-    bpy.ops.object.select_all(action='DESELECT')
+# Remove the bottom face
+bpy.ops.object.mode_set(mode='EDIT')
+bpy.ops.mesh.select_all(action='DESELECT')
+bpy.ops.mesh.select_mode(type='FACE')
+
+# Switch to object mode to select the face
+bpy.ops.object.mode_set(mode='OBJECT')
+for face in cube.data.polygons:
+    if face.normal.z < -0.5:  # Bottom face (normal points down)
+        face.select = True
+
+# Delete the face
+bpy.ops.object.mode_set(mode='EDIT')
+bpy.ops.mesh.delete(type='FACE')
+
+# Add thickness
+bpy.ops.object.mode_set(mode='OBJECT')
+solidify = cube.modifiers.new(name="Solidify", type='SOLIDIFY')
+solidify.thickness = 1.0  # 1mm thickness
+bpy.ops.object.modifier_apply(modifier=solidify.name)
+
+# STL export path
+stl_path = "/Users/stoklosa/Documents/StokApps/3D-print-designs/lamps/STLs/rectangular_lamp_shade.stl"
+
+# Make sure the directory exists
+os.makedirs(os.path.dirname(stl_path), exist_ok=True)
+
+# Try exporting
+bpy.ops.object.select_all(action='DESELECT')
+cube.select_set(True)
+bpy.context.view_layer.objects.active = cube
+
+try:
+    # This is the newer method (Blender 4.x)
+    bpy.ops.wm.stl_export(filepath=stl_path)
+    print(f"STL exported with wm.stl_export to {stl_path}")
+except Exception as e:
+    print(f"Export with wm.stl_export failed: {e}")
     
-    # Select only our object
-    obj.select_set(True)
-    bpy.context.view_layer.objects.active = obj
-    
-    # Export to STL
-    bpy.ops.export_mesh.stl(
-        filepath=filepath,
-        check_existing=True,
-        filter_glob='*.stl',
-        use_selection=True,
-        global_scale=1.0,
-        use_scene_unit=True,
-        ascii=False,
-        use_mesh_modifiers=True
-    )
-    
-    print(f"Model exported to: {filepath}")
+    try:
+        # This is the older method (pre-4.x)
+        bpy.ops.export_mesh.stl(filepath=stl_path)
+        print(f"STL exported with export_mesh.stl to {stl_path}")
+    except Exception as e:
+        print(f"Export with export_mesh.stl failed: {e}")
+        
+        try:
+            # Use the io_mesh_stl add-on directly
+            if "io_mesh_stl" not in bpy.context.preferences.addons:
+                bpy.ops.preferences.addon_enable(module="io_mesh_stl")
+            
+            # Now try again with the add-on loaded
+            bpy.ops.export_mesh.stl(filepath=stl_path)
+            print(f"STL exported with add-on enabled to {stl_path}")
+        except Exception as e:
+            print(f"All automatic export methods failed: {e}")
+            
+            # Last resort - manual ASCII STL export
+            try:
+                with open(stl_path, 'w') as f:
+                    f.write("solid RectangularLampShade\n")
+                    
+                    # Get mesh data
+                    mesh = cube.data
+                    
+                    # Write triangles
+                    for poly in mesh.polygons:
+                        # Write normal
+                        normal = poly.normal
+                        f.write(f"  facet normal {normal.x} {normal.y} {normal.z}\n")
+                        f.write("    outer loop\n")
+                        
+                        # Write vertices
+                        for vert_idx in poly.vertices:
+                            vert = mesh.vertices[vert_idx].co
+                            f.write(f"      vertex {vert.x} {vert.y} {vert.z}\n")
+                        
+                        f.write("    endloop\n")
+                        f.write("  endfacet\n")
+                    
+                    f.write("endsolid RectangularLampShade\n")
+                
+                print(f"STL exported manually in ASCII format to {stl_path}")
+            except Exception as e:
+                print(f"All export methods failed: {e}")
 
-# Export the model
-export_to_stl(lamp_shade, export_filepath)
-
-print("Rectangular lamp shade created with dimensions 100x100x180mm and exported to STL!")
-print(f"Exported to: {export_filepath}")
-print("Model optimized for 3D printing with a very simple approach: a rectangle with 1mm thickness and open bottom.")
+print("Basic rectangular lamp shade created with dimensions 100x100x180mm and exported to STL")
+print("Features: Simple rectangular shape with 1mm wall thickness and open bottom")
