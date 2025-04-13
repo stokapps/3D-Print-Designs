@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 Blender Automation Script for Lamp Generation
-This script runs both lamp_base.py and simple_lamp_cube.py in Blender to generate STL files
-without having to manually copy the code into Blender.
+This script automatically detects and runs lamp generation scripts in Blender to generate STL files.
 Only regenerates STLs for files that have changed since last run.
 """
 
@@ -12,22 +11,61 @@ import platform
 import sys
 import hashlib
 import json
+import re
 from datetime import datetime
-
-# Configuration
-SCRIPTS_TO_RUN = [
-    "simple_lamp_cube.py",
-    "lamp_base.py"
-]
-
-# Map scripts to their output STL files
-SCRIPT_TO_STL = {
-    "simple_lamp_cube.py": "lamp_shade.stl",
-    "lamp_base.py": "lamp_base.stl"
-}
 
 # Cache file to store file hashes
 HASH_CACHE_FILE = ".lamp_build_cache.json"
+
+# Patterns for identifying lamp scripts and extracting STL names
+LAMP_SCRIPT_PATTERN = r"^(lamp_.*|.*_lamp_.*|simple_.*lamp.*)\.py$"
+BASE_SCRIPT_NAME = "lamp_base.py"  # Special case for the base
+
+def find_lamp_scripts(directory):
+    """Find all lamp-related Python scripts in the given directory"""
+    scripts = []
+    for filename in os.listdir(directory):
+        if filename.endswith('.py') and (re.match(LAMP_SCRIPT_PATTERN, filename) or filename == BASE_SCRIPT_NAME):
+            scripts.append(filename)
+    return sorted(scripts)
+
+def determine_stl_filename(script_path):
+    """Parse the script to find the STL output filename or derive from script name"""
+    # First, try to extract from export_filepath in the script
+    try:
+        with open(script_path, 'r') as file:
+            content = file.read()
+            # Look for export filepath definition in the script
+            match = re.search(r'export_filepath\s*=.*?[\'"].*?\/([^\/]+\.stl)[\'"]', content, re.DOTALL)
+            if match:
+                return match.group(1)
+    except (IOError, UnicodeDecodeError):
+        pass
+    
+    # If extraction fails, derive from script name
+    script_name = os.path.basename(script_path)
+    base_name = os.path.splitext(script_name)[0]
+    
+    # Handle special cases
+    if base_name == "lamp_base":
+        return "lamp_base.stl"
+    elif base_name == "simple_lamp_cube":
+        return "lamp_shade.stl"
+    
+    # For other scripts, transform script name to STL name
+    # Remove 'lamp_' prefix if present, otherwise remove '_lamp' suffix
+    if base_name.startswith("lamp_"):
+        stl_name = base_name[5:]
+    elif "_lamp" in base_name:
+        stl_name = base_name.replace("_lamp", "")
+    else:
+        stl_name = base_name
+    
+    # Ensure "shade" is in the name if it's not a base
+    if "shade" not in stl_name.lower() and "base" not in stl_name.lower():
+        stl_name += "_shade"
+    
+    return f"{stl_name}.stl"
 
 def calculate_file_hash(file_path):
     """Calculate the MD5 hash of a file"""
@@ -155,6 +193,21 @@ def main():
         os.makedirs(stl_dir)
         print(f"Created STLs directory: {stl_dir}")
     
+    # Find all lamp scripts in the directory
+    all_scripts = find_lamp_scripts(script_dir)
+    print(f"Found {len(all_scripts)} lamp scripts: {', '.join(all_scripts)}")
+    
+    # Dynamically build the script-to-STL mapping
+    script_to_stl = {}
+    for script in all_scripts:
+        script_path = os.path.join(script_dir, script)
+        stl_filename = determine_stl_filename(script_path)
+        script_to_stl[script] = stl_filename
+    
+    print("Script to STL mapping:")
+    for script, stl in script_to_stl.items():
+        print(f"  {script} -> {stl}")
+    
     # Load the hash cache
     cache_path = os.path.join(script_dir, HASH_CACHE_FILE)
     hash_cache = load_hash_cache(cache_path)
@@ -172,10 +225,10 @@ def main():
     files_processed = []
     
     # Process each script
-    for script in SCRIPTS_TO_RUN:
+    for script in all_scripts:
         script_path = os.path.join(script_dir, script)
         
-        # Skip if file doesn't exist
+        # Skip if file doesn't exist (shouldn't happen since we just found it)
         if not os.path.exists(script_path):
             print(f"Warning: Script file not found: {script_path}")
             continue
@@ -185,7 +238,7 @@ def main():
         current_hashes[script] = current_hash
         
         # Get the corresponding STL file
-        stl_file = SCRIPT_TO_STL.get(script)
+        stl_file = script_to_stl.get(script)
         stl_path = os.path.join(stl_dir, stl_file) if stl_file else None
         
         # Check if we need to process this script
@@ -226,7 +279,7 @@ def main():
     
     # Check all expected STL files
     print("\nChecking STL output files:")
-    for script, stl_file in SCRIPT_TO_STL.items():
+    for script, stl_file in script_to_stl.items():
         stl_path = os.path.join(stl_dir, stl_file)
         if os.path.exists(stl_path):
             print(f"✅ Found STL: {stl_file}")
