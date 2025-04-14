@@ -38,14 +38,109 @@ for face in cube.data.polygons:
 bpy.ops.object.mode_set(mode='EDIT')
 bpy.ops.mesh.delete(type='FACE')
 
+# Add vertical lines before adding thickness
+# Step 1: Add loop cuts for vertical lines
+bpy.ops.mesh.select_all(action='DESELECT')
+
+# Add loop cuts along the X axis (creates vertical lines on front and back)
+# We'll add 8 cuts evenly spaced
+for i in range(1, 9):
+    # Position from 0 to 1
+    factor = i / 9
+    
+    # Select an edge to cut along
+    bpy.ops.object.mode_set(mode='OBJECT')
+    for edge in cube.data.edges:
+        v1 = cube.data.vertices[edge.vertices[0]].co
+        v2 = cube.data.vertices[edge.vertices[1]].co
+        # Find horizontal edges at the top
+        if abs(v1.z - v2.z) < 0.001 and abs(v1.z - 180) < 0.001:
+            if abs(v1.y - v2.y) < 0.001:  # Parallel to X axis
+                edge.select = True
+                break
+    
+    # Make the cut
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.subdivide(number_cuts=1)
+    
+    # Position the cut 
+    bpy.ops.transform.translate(value=(0, 0, 0))  # Just to apply the cut
+    
+    # Deselect for next iteration
+    bpy.ops.mesh.select_all(action='DESELECT')
+
+# Add loop cuts along the Y axis (creates vertical lines on left and right)
+for i in range(1, 9):
+    # Position from 0 to 1
+    factor = i / 9
+    
+    # Select an edge to cut along
+    bpy.ops.object.mode_set(mode='OBJECT')
+    for edge in cube.data.edges:
+        v1 = cube.data.vertices[edge.vertices[0]].co
+        v2 = cube.data.vertices[edge.vertices[1]].co
+        # Find horizontal edges at the top
+        if abs(v1.z - v2.z) < 0.001 and abs(v1.z - 180) < 0.001:
+            if abs(v1.x - v2.x) < 0.001:  # Parallel to Y axis
+                edge.select = True
+                break
+    
+    # Make the cut
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.subdivide(number_cuts=1)
+    
+    # Position the cut
+    bpy.ops.transform.translate(value=(0, 0, 0))  # Just to apply the cut
+    
+    # Deselect for next iteration
+    bpy.ops.mesh.select_all(action='DESELECT')
+
+# Step 2: Push in the vertices to create indented lines
+bpy.ops.object.mode_set(mode='OBJECT')
+
+# Go through each vertex on the outside of the model
+line_depth = 3  # 3mm depth for vertical lines
+for vertex in cube.data.vertices:
+    # Skip if at top or bottom
+    if abs(vertex.co.z - 180) < 0.001 or abs(vertex.co.z) < 0.001:
+        continue
+        
+    # Skip if vertex is at a corner
+    if (abs(abs(vertex.co.x) - 50) < 0.001 and abs(abs(vertex.co.y) - 50) < 0.001):
+        continue
+    
+    # Check if the vertex is on an outer face
+    on_front = abs(vertex.co.y + 50) < 0.001  # Front face
+    on_back = abs(vertex.co.y - 50) < 0.001   # Back face
+    on_left = abs(vertex.co.x + 50) < 0.001   # Left face
+    on_right = abs(vertex.co.x - 50) < 0.001  # Right face
+    
+    # If it's on an outer face and not at a corner, push it in
+    if on_front:
+        vertex.co.y += line_depth
+    elif on_back:
+        vertex.co.y -= line_depth
+    elif on_left:
+        vertex.co.x += line_depth
+    elif on_right:
+        vertex.co.x -= line_depth
+
 # Add thickness
 bpy.ops.object.mode_set(mode='OBJECT')
 solidify = cube.modifiers.new(name="Solidify", type='SOLIDIFY')
 solidify.thickness = 1.0  # 1mm thickness
 bpy.ops.object.modifier_apply(modifier=solidify.name)
 
-# STL export path
-stl_path = "/Users/stoklosa/Documents/StokApps/3D-print-designs/lamps/STLs/rectangular_lamp_shade.stl"
+# Add bevel for smoother edges
+bevel = cube.modifiers.new(name="Bevel", type='BEVEL')
+bevel.width = 2.0  # 2mm bevel
+bevel.segments = 3  # 3 segments for a smooth bevel
+bevel.limit_method = 'ANGLE'
+bevel.angle_limit = 0.785398  # 45 degrees
+bpy.ops.object.modifier_apply(modifier=bevel.name)
+
+# STL export path - UPDATED to match what build_all_lamps.py expects
+stl_path = "/Users/stoklosa/Documents/StokApps/3D-print-designs/lamps/STLs/rectangular_shade.stl"
 
 # Make sure the directory exists
 os.makedirs(os.path.dirname(stl_path), exist_ok=True)
@@ -109,5 +204,5 @@ except Exception as e:
             except Exception as e:
                 print(f"All export methods failed: {e}")
 
-print("Basic rectangular lamp shade created with dimensions 100x100x180mm and exported to STL")
-print("Features: Simple rectangular shape with 1mm wall thickness and open bottom")
+print("Rectangular lamp shade created with dimensions 100x100x180mm and exported to STL")
+print("Features: Vertical decorative lines on all 4 sides, 1mm wall thickness, open bottom")

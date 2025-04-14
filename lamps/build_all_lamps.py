@@ -46,12 +46,6 @@ def determine_stl_filename(script_path):
     script_name = os.path.basename(script_path)
     base_name = os.path.splitext(script_name)[0]
     
-    # Handle special cases
-    if base_name == "lamp_base":
-        return "lamp_base.stl"
-    elif base_name == "simple_lamp_cube":
-        return "lamp_shade.stl"
-    
     # For other scripts, transform script name to STL name
     # Remove 'lamp_' prefix if present, otherwise remove '_lamp' suffix
     if base_name.startswith("lamp_"):
